@@ -4,7 +4,9 @@ project(reconstruction VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(reconstruction src/main.cpp)
+add_executable(reconstruction src/main.cpp 
+                              src/filter.cpp
+                              src/Capture.cpp)
 
 # 查找libpcap库
 find_package(PkgConfig REQUIRED) #确保系统上安装了 pkg-config 工具。
