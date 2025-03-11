@@ -54,6 +54,25 @@
     "cinttypes": "cpp",
     "typeinfo": "cpp",
     "format": "cpp",
-    "span": "cpp"
+    "span": "cpp",
+    "any": "cpp",
+    "hash_map": "cpp",
+    "hash_set": "cpp",
+    "bitset": "cpp",
+    "charconv": "cpp",
+    "chrono": "cpp",
+    "codecvt": "cpp",
+    "complex": "cpp",
+    "cstring": "cpp",
+    "forward_list": "cpp",
+    "list": "cpp",
+    "map": "cpp",
+    "set": "cpp",
+    "unordered_set": "cpp",
+    "fstream": "cpp",
+    "iomanip": "cpp",
+    "shared_mutex": "cpp",
+    "sstream": "cpp",
+    "variant": "cpp"
   }
 }
