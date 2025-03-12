@@ -1,7 +1,7 @@
 #include "../include/filter.hpp"
 
 #include <arpa/inet.h>
-#include <netinet/ether.h>
+#include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
@@ -10,11 +10,13 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <regex>
 #include <stdexcept>
 
-PcapFilter::PcapFilter() {}
-
-PcapFilter::~PcapFilter() {}
+PcapFilter::PcapFilter() : handle_(nullptr) {}
+PcapFilter::~PcapFilter() {
+  if (handle_) pcap_close(handle_);
+}
 
 void PcapFilter::register_callback(FilterCallback callback) {
   callback_ = callback;
@@ -27,38 +29,32 @@ void PcapFilter::register_parser(std::unique_ptr<ProtocolParser> parser) {
 void PcapFilter::process_pcap_file(const std::string &filename) {
   char errbuf[PCAP_ERRBUF_SIZE];
   handle_ = pcap_open_offline(filename.c_str(), errbuf);
-
-  if (handle_ == nullptr) {
+  if (!handle_)
     throw std::runtime_error("Cannot open pcap file: " + std::string(errbuf));
-  }
 
   struct pcap_pkthdr header;
   const u_char *packet;
-
   while ((packet = pcap_next(handle_, &header)) != nullptr) {
     try {
       ParsedPacket parsed = parse_packet(&header, packet);
-
-      // 为HTTP协议的数据包保存到向量中
-      if (parsed.protocol == ProtocolType::HTTP && !parsed.payload.empty()) {
+      if (parsed.protocol != ProtocolType::UNKNOWN) {
+        std::cout << "[SUCCESS] Parsed: " << parsed.source_ip << ":"
+                  << parsed.source_port << " -> " << parsed.dest_ip << ":"
+                  << parsed.dest_port
+                  << " Protocol=" << static_cast<int>(parsed.protocol)
+                  << " Payload=" << parsed.payload.size() << " bytes\n";
         filtered_packets_.push_back(parsed);
       }
-
-      // 尝试使用已注册的解析器解析数据包
       for (auto &parser : parsers_) {
         if (parser->can_parse(parsed) && parser->parse(parsed)) {
-          if (callback_) {
-            callback_(parsed);
-          }
+          if (callback_) callback_(parsed);
           break;
         }
       }
     } catch (const std::exception &e) {
       std::cerr << "Error parsing packet: " << e.what() << std::endl;
-      continue;
     }
   }
-
   pcap_close(handle_);
   handle_ = nullptr;
 }
@@ -66,110 +62,109 @@ void PcapFilter::process_pcap_file(const std::string &filename) {
 ParsedPacket PcapFilter::parse_packet(const struct pcap_pkthdr *header,
                                       const u_char *packet) {
   ParsedPacket parsed;
-  parsed.timestamp = header->ts;
-
   int linktype = pcap_datalink(handle_);
-  const u_char *ip_start = packet;
   size_t header_offset = 0;
+  const u_char *ip_start = nullptr;
 
+  // 处理链路层头部
   switch (linktype) {
-    case DLT_EN10MB:  // 以太网
-    {
-      const struct ether_header *eth =
-          reinterpret_cast<const struct ether_header *>(packet);
-      uint16_t eth_type = ntohs(eth->ether_type);
-
-      // 只处理IPv4类型的以太网帧
-      if (eth_type != ETHERTYPE_IP) {
-        std::cout << "Non-IP Ethernet frame (0x" << std::hex << eth_type << ")"
-                  << std::endl;
-        return parsed;
-      }
-
-      header_offset = sizeof(struct ether_header);
+    case DLT_EN10MB: {  // 以太网
+      auto *eth = reinterpret_cast<const ether_header *>(packet);
+      if (ntohs(eth->ether_type) != ETHERTYPE_IP) return parsed;
+      header_offset = sizeof(ether_header);
       ip_start = packet + header_offset;
       break;
     }
-
-    case 276:  // PPPoE（DSL连接常见）
-    {
-      const PPPoEEtherHeader *pppoe_eth =
-          reinterpret_cast<const PPPoEEtherHeader *>(packet);
-      uint16_t pppoe_type = ntohs(pppoe_eth->ether_type);
-
-      // 检查是否为PPPoE会话阶段
-      if (pppoe_type != 0x8864) {
-        std::cout << "Non-PPPoE session frame (0x" << std::hex << pppoe_type
-                  << ")" << std::endl;
-        return parsed;
-      }
-
-      const PPPoEHeader *pppoe = reinterpret_cast<const PPPoEHeader *>(
+    case DLT_LINUX_SLL: {  // Linux cooked capture
+      struct sll_header {  // 手动定义
+        uint16_t packet_type;
+        uint16_t arphrd_type;
+        uint16_t ll_addr_len;
+        uint8_t ll_addr[8];
+        uint16_t protocol;
+      };
+      auto *sll = reinterpret_cast<const sll_header *>(packet);
+      if (ntohs(sll->protocol) != ETHERTYPE_IP) return parsed;
+      header_offset = 16;  // sll_header 固定长度
+      ip_start = packet + header_offset;
+      break;
+    }
+    case DLT_RAW: {       // 新增：原始 IP 数据包（链路类型 12）
+      ip_start = packet;  // 直接指向 IP 头部
+      header_offset = 0;
+      break;
+    }
+    case 276: {  // PPPoE
+      auto *pppoe_eth = reinterpret_cast<const PPPoEEtherHeader *>(packet);
+      if (ntohs(pppoe_eth->ether_type) != 0x8864) return parsed;
+      auto *pppoe = reinterpret_cast<const PPPoEHeader *>(
           packet + sizeof(PPPoEEtherHeader));
-      uint16_t ppp_proto = ntohs(pppoe->protocol);
-
-      // 检查PPP负载是否为IPv4
-      if (ppp_proto != 0x0021) {
-        std::cout << "Non-IPv4 PPP payload (0x" << std::hex << ppp_proto << ")"
-                  << std::endl;
-        return parsed;
-      }
-
+      if (ntohs(pppoe->protocol) != 0x0021) return parsed;  // IPv4
       header_offset = sizeof(PPPoEEtherHeader) + sizeof(PPPoEHeader);
       ip_start = packet + header_offset;
       break;
     }
-
     default:
-      std::cout << "Unsupported link type: " << linktype << std::endl;
+      std::cerr << "[ERROR] Unsupported link type: " << linktype << std::endl;
       return parsed;
   }
 
-  // 解析IP头
+  // 解析 IP 头部
   const struct ip *ip_header = reinterpret_cast<const struct ip *>(ip_start);
-  if (ip_header->ip_v != 4) {
-    std::cout << "Invalid IP version: " << ip_header->ip_v << std::endl;
-    return parsed;
-  }
+  if (ip_header->ip_v != 4) return parsed;               // 仅支持 IPv4
+  if (ntohs(ip_header->ip_off) & 0x1FFF) return parsed;  // 丢弃分片包
 
-  // 提取IP地址
+  // 提取 IP 地址
   char src_ip[INET_ADDRSTRLEN], dst_ip[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &ip_header->ip_src, src_ip, INET_ADDRSTRLEN);
   inet_ntop(AF_INET, &ip_header->ip_dst, dst_ip, INET_ADDRSTRLEN);
   parsed.source_ip = src_ip;
   parsed.dest_ip = dst_ip;
 
-  // 解析传输层协议
-  size_t ip_header_len = ip_header->ip_hl * 4;
-  const u_char *transport_header = ip_start + ip_header_len;
+  // 解析传输层
+  size_t ip_hlen = ip_header->ip_hl * 4;
+  const u_char *transport = ip_start + ip_hlen;
 
-  if (ip_header->ip_p == IPPROTO_TCP) {
-    const struct tcphdr *tcp_header =
-        reinterpret_cast<const struct tcphdr *>(transport_header);
-    parsed.source_port = ntohs(tcp_header->source);
-    parsed.dest_port = ntohs(tcp_header->dest);
-    parsed.protocol = ProtocolType::TCP;
+  switch (ip_header->ip_p) {
+    case IPPROTO_TCP: {
+      auto *tcp = reinterpret_cast<const tcphdr *>(transport);
+      parsed.source_port = ntohs(tcp->th_sport);
+      parsed.dest_port = ntohs(tcp->th_dport);
+      parsed.protocol = ProtocolType::TCP;
 
-    // HTTP检测逻辑
-    if (parsed.dest_port == 80 || parsed.source_port == 80 ||
-        parsed.dest_port == 8080 || parsed.source_port == 8080) {
-      parsed.protocol = ProtocolType::HTTP;
-
-      size_t tcp_header_len = tcp_header->th_off * 4;
-      const u_char *payload = transport_header + tcp_header_len;
-      size_t payload_len =
-          ntohs(ip_header->ip_len) - ip_header_len - tcp_header_len;
+      // 提取 HTTP 负载
+      size_t tcp_hlen = tcp->th_off * 4;
+      const u_char *payload = transport + tcp_hlen;
+      size_t payload_len = ntohs(ip_header->ip_len) - ip_hlen - tcp_hlen;
 
       if (payload_len > 0) {
         parsed.payload.assign(payload, payload + payload_len);
+        // 检查 HTTP 特征
+        bool is_http = (parsed.dest_port == 80 || parsed.source_port == 80 ||
+                        parsed.dest_port == 8080 || parsed.source_port == 8080);
+        if (!is_http && payload_len >= 4) {  // 检查负载内容
+          std::string magic(parsed.payload.begin(), parsed.payload.begin() + 4);
+          if (magic == "GET " || magic == "POST" ||
+              magic.substr(0, 4) == "HTTP")
+            is_http = true;
+        }
+        if (is_http) parsed.protocol = ProtocolType::HTTP;
       }
+      break;
     }
-  } else if (ip_header->ip_p == IPPROTO_UDP) {
-    const struct udphdr *udp_header =
-        reinterpret_cast<const struct udphdr *>(transport_header);
-    parsed.source_port = ntohs(udp_header->source);
-    parsed.dest_port = ntohs(udp_header->dest);
-    parsed.protocol = ProtocolType::UDP;
+    case IPPROTO_UDP: {
+      auto *udp = reinterpret_cast<const udphdr *>(transport);
+      parsed.source_port = ntohs(udp->uh_sport);
+      parsed.dest_port = ntohs(udp->uh_dport);
+      parsed.protocol = ProtocolType::UDP;
+      break;
+    }
+    case IPPROTO_ICMP:
+      parsed.protocol = ProtocolType::ICMP;
+      break;
+    default:
+      parsed.protocol = ProtocolType::OTHER;
+      break;
   }
 
   return parsed;

@@ -73,6 +73,7 @@
     "iomanip": "cpp",
     "shared_mutex": "cpp",
     "sstream": "cpp",
-    "variant": "cpp"
+    "variant": "cpp",
+    "regex": "cpp"
   }
 }
