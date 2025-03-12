@@ -12,5 +12,8 @@ add_executable(reconstruction src/main.cpp
 find_package(PkgConfig REQUIRED) #确保系统上安装了 pkg-config 工具。
 pkg_check_modules(PCAP REQUIRED libpcap) #通过 pkg-config 查找 libpcap 库。
 
+find_package(spdlog CONFIG REQUIRED)
+
 #链接libpcap库
 target_link_libraries(reconstruction ${PCAP_LIBRARIES}) #将 libpcap 库链接到可执行文件。
+target_link_libraries(reconstruction spdlog::spdlog)

@@ -3,6 +3,8 @@
 #include <iostream>
 #include <thread>
 
+#include <spdlog/spdlog.h>
+
 #include "../include/Capture.hpp"
 #include "../include/filter.hpp"
 
@@ -37,16 +39,18 @@ int main() {
     // pcap_dump_close(dumper);
 
     // 2.filter
-    std::cout << "开始包分析" << std::endl;
+    spdlog::info("开始包分析");
 
     // 检查文件是否存在
     std::string pcap_file_path = std::string(
         "/home/fzx/Documents/traffic-reconstruction-cpp/capture.pcap");
     std::ifstream pcap_file(pcap_file_path);
     if (!pcap_file.good()) {
-      throw std::runtime_error("capture.pcap file not found!");
+      spdlog::error("未找到文件：{}", pcap_file_path);
+      pcap_file.close();
+      exit(-1);
     }
-    pcap_file.close();
+   
 
     PcapFilter filter;
     std::vector<ParsedPacket> http_packets;
