@@ -62,12 +62,18 @@ void PcapFilter::process_pcap_file(const std::string &filename) {
 ParsedPacket PcapFilter::parse_packet(const struct pcap_pkthdr *header,
                                       const u_char *packet) {
   ParsedPacket parsed;
-  int linktype = pcap_datalink(handle_);
-  size_t header_offset = 0;
-  const u_char *ip_start = nullptr;
+  parsed.timestamp = header->ts;
 
+  int linktype = pcap_datalink(handle_);
+  const u_char *ip_start = nullptr;
+  size_t header_offset = 0;
   // 处理链路层头部
   switch (linktype) {
+    case DLT_RAW:         // Raw IP (链路类型 12)
+      ip_start = packet;  // 直接指向 IP 头部，无需额外处理
+      std::cout << "Processing Raw IP packet" << std::endl;
+      break;
+
     case DLT_EN10MB: {  // 以太网
       auto *eth = reinterpret_cast<const ether_header *>(packet);
       if (ntohs(eth->ether_type) != ETHERTYPE_IP) return parsed;
@@ -89,11 +95,6 @@ ParsedPacket PcapFilter::parse_packet(const struct pcap_pkthdr *header,
       ip_start = packet + header_offset;
       break;
     }
-    case DLT_RAW: {       // 新增：原始 IP 数据包（链路类型 12）
-      ip_start = packet;  // 直接指向 IP 头部
-      header_offset = 0;
-      break;
-    }
     case 276: {  // PPPoE
       auto *pppoe_eth = reinterpret_cast<const PPPoEEtherHeader *>(packet);
       if (ntohs(pppoe_eth->ether_type) != 0x8864) return parsed;
@@ -105,14 +106,21 @@ ParsedPacket PcapFilter::parse_packet(const struct pcap_pkthdr *header,
       break;
     }
     default:
-      std::cerr << "[ERROR] Unsupported link type: " << linktype << std::endl;
+      std::cerr << "Unsupported link type: " << linktype << std::endl;
       return parsed;
   }
 
-  // 解析 IP 头部
+  // 检查 IP 版本
   const struct ip *ip_header = reinterpret_cast<const struct ip *>(ip_start);
-  if (ip_header->ip_v != 4) return parsed;               // 仅支持 IPv4
-  if (ntohs(ip_header->ip_off) & 0x1FFF) return parsed;  // 丢弃分片包
+  if (ip_header->ip_v != 4) {
+    std::cout << "Non IPv4 packet" << std::endl;
+    return parsed;
+  }
+
+  // 解析传输层之前，先打印一些调试信息
+  std::cout << "IP header length: " << (ip_header->ip_hl * 4)
+            << ", Total length: " << ntohs(ip_header->ip_len)
+            << ", Protocol: " << static_cast<int>(ip_header->ip_p) << std::endl;
 
   // 提取 IP 地址
   char src_ip[INET_ADDRSTRLEN], dst_ip[INET_ADDRSTRLEN];
@@ -125,46 +133,52 @@ ParsedPacket PcapFilter::parse_packet(const struct pcap_pkthdr *header,
   size_t ip_hlen = ip_header->ip_hl * 4;
   const u_char *transport = ip_start + ip_hlen;
 
-  switch (ip_header->ip_p) {
-    case IPPROTO_TCP: {
-      auto *tcp = reinterpret_cast<const tcphdr *>(transport);
-      parsed.source_port = ntohs(tcp->th_sport);
-      parsed.dest_port = ntohs(tcp->th_dport);
-      parsed.protocol = ProtocolType::TCP;
+  if (ip_header->ip_p == IPPROTO_TCP) {
+    auto *tcp = reinterpret_cast<const tcphdr *>(transport);
+    parsed.source_port = ntohs(tcp->th_sport);
+    parsed.dest_port = ntohs(tcp->th_dport);
 
-      // 提取 HTTP 负载
-      size_t tcp_hlen = tcp->th_off * 4;
+    size_t tcp_hlen = tcp->th_off * 4;
+    size_t payload_len = ntohs(ip_header->ip_len) - ip_hlen - tcp_hlen;
+
+    if (payload_len > 0 && payload_len < 65536) {  // 添加合理性检查
       const u_char *payload = transport + tcp_hlen;
-      size_t payload_len = ntohs(ip_header->ip_len) - ip_hlen - tcp_hlen;
+      parsed.payload.assign(payload, payload + payload_len);
 
-      if (payload_len > 0) {
-        parsed.payload.assign(payload, payload + payload_len);
+      // 检查是否为 HTTP
+      if (parsed.dest_port == 80 || parsed.source_port == 80) {
+        std::string payload_str(reinterpret_cast<const char *>(payload),
+                                std::min(payload_len, size_t(20)));
+        std::cout << "Checking HTTP: " << payload_str << std::endl;
+
         // 检查 HTTP 特征
-        bool is_http = (parsed.dest_port == 80 || parsed.source_port == 80 ||
-                        parsed.dest_port == 8080 || parsed.source_port == 8080);
-        if (!is_http && payload_len >= 4) {  // 检查负载内容
-          std::string magic(parsed.payload.begin(), parsed.payload.begin() + 4);
-          if (magic == "GET " || magic == "POST" ||
-              magic.substr(0, 4) == "HTTP")
-            is_http = true;
+        if (payload_str.find("HTTP/") != std::string::npos ||
+            payload_str.find("GET ") != std::string::npos ||
+            payload_str.find("POST ") != std::string::npos) {
+          parsed.protocol = ProtocolType::HTTP;
+          parsed.content_type = detect_content_type(parsed.payload);
+
+          std::cout << "HTTP detected! Content-Type: "
+                    << static_cast<int>(parsed.content_type) << std::endl;
         }
-        if (is_http) parsed.protocol = ProtocolType::HTTP;
       }
-      break;
     }
-    case IPPROTO_UDP: {
-      auto *udp = reinterpret_cast<const udphdr *>(transport);
-      parsed.source_port = ntohs(udp->uh_sport);
-      parsed.dest_port = ntohs(udp->uh_dport);
-      parsed.protocol = ProtocolType::UDP;
-      break;
+  } else {
+    switch (ip_header->ip_p) {
+      case IPPROTO_UDP: {
+        auto *udp = reinterpret_cast<const udphdr *>(transport);
+        parsed.source_port = ntohs(udp->uh_sport);
+        parsed.dest_port = ntohs(udp->uh_dport);
+        parsed.protocol = ProtocolType::UDP;
+        break;
+      }
+      case IPPROTO_ICMP:
+        parsed.protocol = ProtocolType::ICMP;
+        break;
+      default:
+        parsed.protocol = ProtocolType::OTHER;
+        break;
     }
-    case IPPROTO_ICMP:
-      parsed.protocol = ProtocolType::ICMP;
-      break;
-    default:
-      parsed.protocol = ProtocolType::OTHER;
-      break;
   }
 
   return parsed;
@@ -175,7 +189,35 @@ ContentType PcapFilter::detect_content_type(const std::vector<uint8_t> &data) {
     return ContentType::UNKNOWN;
   }
 
-  // 简单的文件特征码检测
+  // 首先检查是否包含 "Content-Type:" 头部
+  std::string data_str(data.begin(), data.end());
+  size_t content_type_pos = data_str.find("Content-Type:");
+  if (content_type_pos != std::string::npos) {
+    if (data_str.find("text/html") != std::string::npos ||
+        data_str.find("text/plain") != std::string::npos ||
+        data_str.find("application/json") != std::string::npos) {
+      return ContentType::TEXT;
+    }
+  }
+
+  // 检查可打印字符比例
+  size_t printable_count = 0;
+  size_t check_size = std::min(data.size(), size_t(100));
+
+  for (size_t i = 0; i < check_size; ++i) {
+    if (isprint(data[i]) || isspace(data[i])) {
+      printable_count++;
+    }
+  }
+
+  double printable_ratio = static_cast<double>(printable_count) / check_size;
+  std::cout << "Printable ratio: " << printable_ratio << std::endl;
+
+  if (printable_ratio > 0.8) {
+    return ContentType::TEXT;
+  }
+
+  // 检查图片/视频格式
   static const std::map<std::vector<uint8_t>, ContentType> signatures = {
       {{0xFF, 0xD8, 0xFF}, ContentType::IMAGE},        // JPEG
       {{0x89, 0x50, 0x4E, 0x47}, ContentType::IMAGE},  // PNG
@@ -187,13 +229,6 @@ ContentType PcapFilter::detect_content_type(const std::vector<uint8_t> &data) {
         std::equal(sig.first.begin(), sig.first.end(), data.begin())) {
       return sig.second;
     }
-  }
-
-  // 检测文本内容
-  if (std::all_of(data.begin(), data.end(), [](uint8_t c) {
-        return c < 128;  // ASCII文本
-      })) {
-    return ContentType::TEXT;
   }
 
   return ContentType::UNKNOWN;

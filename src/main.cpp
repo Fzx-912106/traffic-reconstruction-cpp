@@ -53,31 +53,36 @@ int main() {
 
     // 注册回调函数，收集HTTP数据包
     filter.register_callback([&http_packets](const ParsedPacket &packet) {
-      std::string content_type_str;
-      switch(packet.content_type) {
-          case ContentType::TEXT: content_type_str = "TEXT"; break;
-          case ContentType::IMAGE: content_type_str = "IMAGE"; break;
-          case ContentType::VIDEO: content_type_str = "VIDEO"; break;
-          default: content_type_str = "UNKNOWN"; break;
-      }
+      if (packet.protocol == ProtocolType::HTTP) {  // 首先检查是否为HTTP数据包
+        http_packets.push_back(packet);             // 直接添加到向量中
 
-      std::cout << "\n=== Packet Details ===\n"
-                << "Source: " << packet.source_ip << ":" << packet.source_port
-                << "\n"
-                << "Destination: " << packet.dest_ip << ":" << packet.dest_port
-                << "\n"
-                << "Protocol: " << static_cast<int>(packet.protocol) << "\n"
-                << "Content Type: " << content_type_str << "\n"
-                << "Payload size: " << packet.payload.size() << "\n"
-                << "===================" << std::endl;
+        std::string content_type_str;
+        switch (packet.content_type) {
+          case ContentType::TEXT:
+            content_type_str = "TEXT";
+            break;
+          case ContentType::IMAGE:
+            content_type_str = "IMAGE";
+            break;
+          case ContentType::VIDEO:
+            content_type_str = "VIDEO";
+            break;
+          default:
+            content_type_str = "UNKNOWN";
+            break;
+        }
 
-      if (packet.protocol == ProtocolType::HTTP && !packet.payload.empty()) {
-        http_packets.push_back(packet);
-        std::cout << "Found HTTP packet, total count: " << http_packets.size()
-                  << std::endl;
+        // 打印数据包信息
+        std::cout << "\n=== HTTP Packet Details ===\n"
+                  << "Source: " << packet.source_ip << ":" << packet.source_port
+                  << "\n"
+                  << "Destination: " << packet.dest_ip << ":"
+                  << packet.dest_port << "\n"
+                  << "Content Type: " << content_type_str << "\n"
+                  << "Payload size: " << packet.payload.size() << "\n";
 
-        // 打印HTTP包的前100个字节
-        std::cout << "HTTP payload preview: ";
+        // 打印HTTP内容预览
+        std::cout << "Content preview: ";
         size_t preview_size = std::min(packet.payload.size(), size_t(100));
         for (size_t i = 0; i < preview_size; ++i) {
           char c = static_cast<char>(packet.payload[i]);
@@ -86,7 +91,7 @@ int main() {
           else
             std::cout << '.';
         }
-        std::cout << std::endl;
+        std::cout << "\n====================" << std::endl;
       }
     });
 
