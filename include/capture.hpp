@@ -1,31 +1,31 @@
 #ifndef PCAP_CAPTURE_HPP
 #define PCAP_CAPTURE_HPP
 
-#include <pcap.h>
-#include <functional>
-#include <string>
-#include <vector>
-#include <thread>
 #include <atomic>
-#include <queue>
-#include <mutex>
 #include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <pcap.h>
+#include <queue>
+#include <string>
+#include <thread>
+#include <vector>
 
 // 原始数据包结构体定义
-struct RawPacket
-{
+struct RawPacket {
   struct timeval timestamp;
   uint32_t caplen;
   std::vector<uint8_t> data;
   size_t storage_size() const;
 };
 
-class PcapCapture
-{
+class PcapCapture {
 public:
-  using CallbackType = std::function<void(const struct pcap_pkthdr *, const u_char *)>;
+  using CallbackType =
+      std::function<void(const struct pcap_pkthdr *, const u_char *)>;
 
-  PcapCapture(const std::string &interface, const std::string &filter = "tcp or udp");
+  PcapCapture(const std::string &interface,
+              const std::string &filter = "tcp or udp");
   ~PcapCapture();
 
   void start_capture(CallbackType callback);
@@ -33,7 +33,8 @@ public:
   pcap_t *get_pcap_handle() { return pcap_handle_; }
 
 private:
-  static void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes);
+  static void packet_handler(u_char *user, const struct pcap_pkthdr *h,
+                             const u_char *bytes);
   void process_packets();
 
   std::string interface_;

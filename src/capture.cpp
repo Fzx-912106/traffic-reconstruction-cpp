@@ -1,4 +1,4 @@
-#include "../include/Capture.hpp"
+#include "capture.hpp"
 
 #include <stdexcept>
 

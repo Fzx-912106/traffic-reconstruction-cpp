@@ -1,14 +1,29 @@
+#include <spdlog/spdlog.h>
+
 #include <chrono>
 #include <fstream>
 #include <iostream>
 #include <thread>
 
-#include <spdlog/spdlog.h>
-
-#include "../include/Capture.hpp"
-#include "../include/filter.hpp"
+#include "capture.hpp"
+#include "capture_module.hpp"
+#include "filter.hpp"
+#include "pcap_capture_module.hpp"
 
 int main() {
+  auto capturer = traffic_analyzer::PcapCaptureModule();
+  capturer.start_capture("eth1");
+  while (1) {
+    auto packet = capturer.get_next_packet();
+    if (packet) {
+      spdlog::debug("收到包{}", packet.value().destination_ip);
+    } else {
+      spdlog::debug("没有需要处理的数据包");
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+  }
+
+  /*
   try {
     // //Capture
     // PcapCapture capture("tun0");
@@ -50,7 +65,6 @@ int main() {
       pcap_file.close();
       exit(-1);
     }
-   
 
     PcapFilter filter;
     std::vector<ParsedPacket> http_packets;
@@ -119,4 +133,5 @@ int main() {
     return 1;
   }
   return 0;
+  */
 }
