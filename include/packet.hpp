@@ -13,14 +13,9 @@ struct Packet {
   std::string destination_ip;
   u_int16_t source_port;
   u_int16_t destination_port;
-  std::vector<std::byte> payload;
   size_t sequence_number;
-  bool is_same_connection(const Packet& packet) {
-    return this->destination_ip == packet.destination_ip &&
-           this->destination_port == packet.destination_port &&
-           this->source_ip == packet.source_ip &&
-           this->source_port == packet.source_port;
-  }
+  // 这里是全部数据
+  std::vector<std::byte> payload;
 };
 }  // namespace traffic_analyzer
 
