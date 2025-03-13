@@ -33,6 +33,7 @@ void PcapCaptureModule::start_capture(const std::string &interface_name) {
   this->running = true;
   spdlog::info("开始在网卡{}上抓包", interface_name);
 }
+
 // 停止抓包
 void PcapCaptureModule::stop_capture() {
   // 如果没有运行则不做处理

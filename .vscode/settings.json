@@ -74,6 +74,13 @@
     "shared_mutex": "cpp",
     "sstream": "cpp",
     "variant": "cpp",
-    "regex": "cpp"
+    "regex": "cpp",
+    "expected": "cpp",
+    "source_location": "cpp",
+    "strstream": "cpp",
+    "future": "cpp",
+    "stdfloat": "cpp",
+    "typeindex": "cpp",
+    "valarray": "cpp"
   }
 }
