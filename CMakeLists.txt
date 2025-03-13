@@ -14,7 +14,7 @@ include_directories("include")
 
 
 add_executable(reconstruction src/main.cpp)
-target_sources(reconstruction PRIVATE src/filter.cpp src/capture.cpp src/pcap_capture_module.cpp)
+target_sources(reconstruction PRIVATE src/pcap_capture_module.cpp)
 #链接libpcap库
 target_link_libraries(reconstruction PRIVATE ${PCAP_LIBRARIES} spdlog::spdlog) #将 libpcap 库链接到可执行文件。
 target_link_libraries(reconstruction PRIVATE spdlog::spdlog)
