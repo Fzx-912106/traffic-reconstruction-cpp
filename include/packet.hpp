@@ -14,6 +14,7 @@ class Packet {
   std::string destination_ip;
   u_int16_t source_port;
   u_int16_t destination_port;
+  Packet() = default;  // 解决不存在默认构造函数的问题
   // TCP包的序列号
   size_t sequence_number;
   // 这里是全部数据
@@ -54,4 +55,4 @@ struct fmt::formatter<traffic_analyzer::Packet> : fmt::formatter<std::string> {
         packet.destination_port, packet.sequence_number, packet.payload.size());
   }
 };
-#endif // __PACKET_H__
+#endif  // __PACKET_H__

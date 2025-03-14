@@ -57,15 +57,16 @@ void run(){
 }
 */
 
+// 测试用例：测试一个完整的HTTP响应
 void test_packet() {
   std::string http_data =
       "HTTP/1.1 200 OK\r\n"
       "Content-Type: text/html\r\n"
       "Content-Length: 4\r\n"
       "\r\n"
-      "abcd";
+      "a12341234123412341234!";
   std::vector<std::byte> http_data_bytes;
-  
+
   for (auto c : http_data) {
     http_data_bytes.push_back(std::byte{c});
   }
@@ -85,9 +86,82 @@ void test_packet() {
       filter.get_http_response();
   if (resp.has_value()) {
     spdlog::info("收到http响应：{}", resp.value());
+    spdlog::info("HTTP body: ");
+    for (auto byte : resp.value().body) {
+      spdlog::info("{}", static_cast<char>(byte));
+    }
   } else {
     spdlog::info("没有收到http响应");
   }
+}
+
+using namespace traffic_analyzer;
+// 测试用例1：测试一个完整的HTTP响应
+int test_packet_one() {
+  MyFilterModule filter;
+
+  // 构造 HTTP 响应
+  std::vector<std::vector<std::byte>> packets = {
+      // 第一部分（HTTP 响应头部分）
+      {
+          std::byte('H'),  std::byte('T'),  std::byte('T'),  std::byte('P'),
+          std::byte('/'),  std::byte('1'),  std::byte('.'),  std::byte('1'),
+          std::byte(' '),  std::byte('2'),  std::byte('0'),  std::byte('0'),
+          std::byte(' '),  std::byte('O'),  std::byte('K'),  std::byte('\r'),
+          std::byte('\n'), std::byte('C'),  std::byte('o'),  std::byte('n'),
+          std::byte('t'),  std::byte('e'),  std::byte('n'),  std::byte('t'),
+          std::byte('-'),  std::byte('T'),  std::byte('y'),  std::byte('p'),
+          std::byte('e'),  std::byte(':'),  std::byte(' '),  std::byte('t'),
+          std::byte('e'),  std::byte('x'),  std::byte('t'),  std::byte('/'),
+          std::byte('h'),  std::byte('t'),  std::byte('m'),  std::byte('l'),
+          std::byte('\r'), std::byte('\n'), std::byte('\r'), std::byte('\n'),
+      },
+
+      // 第二部分（HTTP 响应体部分）
+      {
+          std::byte('H'),
+          std::byte('e'),
+          std::byte('l'),
+          std::byte('l'),
+          std::byte('o'),
+          std::byte(','),
+          std::byte(' '),
+          std::byte('w'),
+          std::byte('o'),
+          std::byte('r'),
+          std::byte('l'),
+          std::byte('d'),
+          std::byte('!'),
+          std::byte('\r'),
+          std::byte('\n'),
+      }};
+
+  // 使用相同的 key 代表同一个 TCP 连接
+  std::string tcp_key = "192.168.1.1:12345->192.168.1.2:80";
+
+  for (const auto& packet_data : packets) {
+    Packet pkt;
+    pkt.key = tcp_key;
+    pkt.payload = packet_data;
+    filter.add_packet(pkt);
+  }
+
+  // 获取解析后的 HTTP 响应
+  auto response = filter.get_http_response();
+  if (response) {
+    std::cout << "HTTP Status Code: " << response->status_code << std::endl;
+    std::cout << "Content-Type: " << response->content_type << std::endl;
+    std::cout << "Content-Length: " << response->body.size() << std::endl;
+    std::cout << "Body: ";
+    for (auto byte : response->body) {
+      std::cout << static_cast<char>(byte);
+    }
+    std::cout << std::endl;
+  } else {
+    std::cout << "No HTTP response detected!" << std::endl;
+  }
+
+  return 0;
 }
 
 int main() {
