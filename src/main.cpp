@@ -2,117 +2,138 @@
 #include <fstream>
 #include <iostream>
 #include <thread>
+#include <signal.h>
 
 #include <spdlog/spdlog.h>
 
 #include "../include/Capture.hpp"
 #include "../include/filter.hpp"
 
+// 全局变量，用于控制程序运行
+volatile sig_atomic_t running = 1; 
+// 信号处理函数
+void signal_handler(int signum)
+{
+  if (signum == SIGINT)
+  {
+    spdlog::info("接收到SIGINT信号，程序即将退出");
+    running = 0;
+  }
+}
 int main() {
-  try {
-    // //Capture
-    // PcapCapture capture("tun0");
+   try {
+    //设置信号处理
+    signal(SIGINT, signal_handler);
 
-    // // 打开输出文件
-    // pcap_dumper_t *dumper = pcap_dump_open(capture.get_pcap_handle(),
-    // "capture.pcap"); if (!dumper)
-    // {
-    //   throw std::runtime_error("Failed to open output file");
-    // }
+    //Capture
+    PcapCapture capture("enp1s0");
 
-    // // 启动捕获并同时保存文件
-    // capture.start_capture([dumper](const struct pcap_pkthdr *hdr, const
-    // u_char *data)
-    //                       {
-    //         // 打印包信息
-    //         std::cout << "Received packet, len: " << hdr->caplen
-    //                  << ", timestamp: " << hdr->ts.tv_sec << std::endl;
+    // 打开输出文件
+    pcap_dumper_t *dumper = pcap_dump_open(capture.get_pcap_handle(),
+    "capture.pcap"); if (!dumper)
+    {
+      throw std::runtime_error("Failed to open output file");
+    }
 
-    //         // 保存到文件
-    //         pcap_dump((u_char*)dumper, hdr, data); });
+    // 启动捕获并同时保存文件
+    capture.start_capture([dumper](const struct pcap_pkthdr *hdr, const
+    u_char *data)
+                          {
+            // 打印包信息
+            std::cout << "Received packet, len: " << hdr->caplen
+                     << ", timestamp: " << hdr->ts.tv_sec << std::endl;
 
-    // // 运行10秒后停止
-    // std::this_thread::sleep_for(std::chrono::seconds(20));
-    // capture.stop_capture();
+            // 保存到文件
+            pcap_dump((u_char*)dumper, hdr, data); });
 
-    // // 关闭文件
-    // pcap_dump_close(dumper);
+    std::cout << "按 Ctrl+C 停止捕获..." << std::endl;
+
+    // 等待用户按下Ctrl+C
+    while (running) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // 停止捕获
+    capture.stop_capture();
+    // 关闭文件
+    pcap_dump_close(dumper);
+    std::cout << "捕获已停止." << std::endl;
 
     // 2.filter
-    spdlog::info("开始包分析");
+  //   spdlog::info("开始包分析");
 
-    // 检查文件是否存在
-    std::string pcap_file_path = std::string(
-        "/home/fzx/Documents/traffic-reconstruction-cpp/capture.pcap");
-    std::ifstream pcap_file(pcap_file_path);
-    if (!pcap_file.good()) {
-      spdlog::error("未找到文件：{}", pcap_file_path);
-      pcap_file.close();
-      exit(-1);
-    }
+  //   // 检查文件是否存在
+  //   std::string pcap_file_path = std::string(
+  //       "/home/fzx/Documents/traffic-reconstruction-cpp/capture.pcap");
+  //   std::ifstream pcap_file(pcap_file_path);
+  //   if (!pcap_file.good()) {
+  //     spdlog::error("未找到文件：{}", pcap_file_path);
+  //     pcap_file.close();
+  //     exit(-1);
+  //   }
    
 
-    PcapFilter filter;
-    std::vector<ParsedPacket> http_packets;
+  //   PcapFilter filter;
+  //   std::vector<ParsedPacket> http_packets;
 
-    // 注册回调函数，收集HTTP数据包
-    filter.register_callback([&http_packets](const ParsedPacket &packet) {
-      if (packet.protocol == ProtocolType::HTTP) {  // 首先检查是否为HTTP数据包
-        http_packets.push_back(packet);             // 直接添加到向量中
+  //   // 注册回调函数，收集HTTP数据包
+  //   filter.register_callback([&http_packets](const ParsedPacket &packet) {
+  //     if (packet.protocol == ProtocolType::HTTP) {  // 首先检查是否为HTTP数据包
+  //       http_packets.push_back(packet);             // 直接添加到向量中
 
-        std::string content_type_str;
-        switch (packet.content_type) {
-          case ContentType::TEXT:
-            content_type_str = "TEXT";
-            break;
-          case ContentType::IMAGE:
-            content_type_str = "IMAGE";
-            break;
-          case ContentType::VIDEO:
-            content_type_str = "VIDEO";
-            break;
-          default:
-            content_type_str = "UNKNOWN";
-            break;
-        }
+  //       std::string content_type_str;
+  //       switch (packet.content_type) {
+  //         case ContentType::TEXT:
+  //           content_type_str = "TEXT";
+  //           break;
+  //         case ContentType::IMAGE:
+  //           content_type_str = "IMAGE";
+  //           break;
+  //         case ContentType::VIDEO:
+  //           content_type_str = "VIDEO";
+  //           break;
+  //         default:
+  //           content_type_str = "UNKNOWN";
+  //           break;
+  //       }
 
-        // 打印数据包信息
-        std::cout << "\n=== HTTP Packet Details ===\n"
-                  << "Source: " << packet.source_ip << ":" << packet.source_port
-                  << "\n"
-                  << "Destination: " << packet.dest_ip << ":"
-                  << packet.dest_port << "\n"
-                  << "Content Type: " << content_type_str << "\n"
-                  << "Payload size: " << packet.payload.size() << "\n";
+  //       // 打印数据包信息
+  //       std::cout << "\n=== HTTP Packet Details ===\n"
+  //                 << "Source: " << packet.source_ip << ":" << packet.source_port
+  //                 << "\n"
+  //                 << "Destination: " << packet.dest_ip << ":"
+  //                 << packet.dest_port << "\n"
+  //                 << "Content Type: " << content_type_str << "\n"
+  //                 << "Payload size: " << packet.payload.size() << "\n";
 
-        // 打印HTTP内容预览
-        std::cout << "Content preview: ";
-        size_t preview_size = std::min(packet.payload.size(), size_t(100));
-        for (size_t i = 0; i < preview_size; ++i) {
-          char c = static_cast<char>(packet.payload[i]);
-          if (isprint(c))
-            std::cout << c;
-          else
-            std::cout << '.';
-        }
-        std::cout << "\n====================" << std::endl;
-      }
-    });
+  //       // 打印HTTP内容预览
+  //       std::cout << "Content preview: ";
+  //       size_t preview_size = std::min(packet.payload.size(), size_t(100));
+  //       for (size_t i = 0; i < preview_size; ++i) {
+  //         char c = static_cast<char>(packet.payload[i]);
+  //         if (isprint(c))
+  //           std::cout << c;
+  //         else
+  //           std::cout << '.';
+  //       }
+  //       std::cout << "\n====================" << std::endl;
+  //     }
+  //   });
 
-    std::cout << "Processing pcap file..." << std::endl;
-    filter.process_pcap_file(pcap_file_path);
-    std::cout << "Finished processing pcap file." << std::endl;
+  //   std::cout << "Processing pcap file..." << std::endl;
+  //   filter.process_pcap_file(pcap_file_path);
+  //   std::cout << "Finished processing pcap file." << std::endl;
 
-    if (http_packets.empty()) {
-      std::cout << "No HTTP packets found in the capture file." << std::endl;
-      return 0;
-    }
+  //   if (http_packets.empty()) {
+  //     std::cout << "No HTTP packets found in the capture file." << std::endl;
+  //     return 0;
+  //   }
 
-    std::cout << "Writing " << http_packets.size()
-              << " packets to http_packets.h" << std::endl;
-    filter.save_packets_to_carray("http_packets.h", http_packets,
-                                  "http_packet");
-  }
+  //   std::cout << "Writing " << http_packets.size()
+  //             << " packets to http_packets.h" << std::endl;
+  //   filter.save_packets_to_carray("http_packets.h", http_packets,
+  //                                 "http_packet");
+   }
 
   catch (const std::exception &e) {
     std::cerr << "Error: " << e.what() << std::endl;
