@@ -19,6 +19,7 @@ struct Packet {
     std::chrono::system_clock::time_point timestamp;
     std::string source_ip;
     std::string dest_ip;
+    std::string url_path; // 新增：URL路径
     uint16_t source_port;
     uint16_t dest_port;
 };
