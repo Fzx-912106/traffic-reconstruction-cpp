@@ -96,7 +96,7 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
     }
 
     if(stream_start.find("HTTP/") == 0 ||
-         stream_start.find("HTTP/") != std::string::npos) {
+     stream_start.find("HTTP/") != std::string::npos)  {
         
         std::cout << "发现HTTP响应，前100字节: " << stream_start << std::endl;
 
@@ -153,16 +153,40 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
             }
           }
 
-          // 如果是HTML内容，检查是否有结束标签
-          if (response.content_type.find("text/html") == 0) {
-            std::string body_str(
-                reinterpret_cast<const char *>(response.body.data()),
-                response.body.size());
-            if (body_str.find("</html>") == std::string::npos) {
-              std::cout << "HTML响应不完整: 未找到</html>结束标签" << std::endl;
-              is_complete = false;
-            }
-          }
+
+// 如果是HTML内容，检查是否有结束标签
+if (response.content_type.find("text/html") == 0) {
+  std::string body_str(
+      reinterpret_cast<const char *>(response.body.data()),
+      response.body.size());
+  if (body_str.find("</html>") == std::string::npos && 
+      body_str.find("</HTML>") == std::string::npos) {
+    std::cout << "HTML响应不完整: 未找到</html>结束标签" << std::endl;
+    
+    // 检查 Content-Length 是否匹配，如果匹配则认为响应完整
+    if (response.headers.find("content-length") != response.headers.end()) {
+      try {
+        size_t expected_length = std::stoul(response.headers["content-length"]);
+        if (response.body.size() >= expected_length) {
+          std::cout << "但 Content-Length 匹配，认为响应完整" << std::endl;
+          is_complete = true;
+        }
+      } catch (const std::exception &e) {
+        // 解析错误，继续使用 is_complete = false
+      }
+    }
+    
+    // 如果响应体大于一定大小且包含明显的 HTML 内容，也认为完整
+    if (!is_complete && response.body.size() > 500 && 
+        (body_str.find("<body") != std::string::npos || 
+         body_str.find("<BODY") != std::string::npos)) {
+      std::cout << "响应体包含足够的 HTML 内容，认为响应完整" << std::endl;
+      is_complete = true;
+    }
+  } else {
+    std::cout << "HTML响应完整: 找到</html>结束标签" << std::endl;
+  }
+}
 
           if (is_complete) {
             http_responses.push_back(response);
@@ -354,9 +378,9 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
   std::string http_data = data_str.substr(http_start);
 
   // 查找头部和正文之间的分隔符
-  size_t header_end = data_str.find("\r\n\r\n");
+  size_t header_end = http_data.find("\r\n\r\n");
   if (header_end == std::string::npos) {
-    header_end = data_str.find("\n\n"); // 允许单个换行符
+    header_end = http_data.find("\n\n"); // 允许单个换行符
     if (header_end != std::string::npos) {
       header_end += 2; // 调整分隔符长度
     }
@@ -370,7 +394,7 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
   }
 
   // 提取状态行和头部
-  std::string headers_section = data_str.substr(0, header_end);
+  std::string headers_section = http_data.substr(0, header_end);
   std::cout << "HTTP头部大小: " << headers_section.size() << " 字节"
             << std::endl;
 
@@ -474,12 +498,12 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
     }
   }
   // 提取正文
-  size_t body_start = header_end;
-  if (data_str.substr(header_end - 4, 4) == "\r\n\r\n") {
-    body_start = header_end; // 已经包含了分隔符的长度
-  } else if (data_str.substr(header_end - 2, 2) == "\n\n") {
-    body_start = header_end; // 已经包含了分隔符的长度
-  }
+  size_t body_start = http_start + header_end;
+  // if (data_str.substr(header_end - 4, 4) == "\r\n\r\n") {
+  //   body_start = header_end; // 已经包含了分隔符的长度
+  // } else if (data_str.substr(header_end - 2, 2) == "\n\n") {
+  //   body_start = header_end; // 已经包含了分隔符的长度
+  // }
 
   std::cout << "正文开始位置: " << body_start << ", 数据总长度: " << data.size()
             << std::endl;
