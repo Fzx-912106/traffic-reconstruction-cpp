@@ -3,39 +3,39 @@
 
 #include "packet.h"
 
+#include <mutex>
 #include <pcap.h>
 #include <thread>
-#include <mutex>
 #include <vector>
 
 class CaptureModule {
 private:
-    pcap_t *handle{nullptr};
-    std::string interface;
-    std::string filter_expr;
-    std::atomic<bool> running{false};
-    std::thread capture_thread;
-    std::mutex packet_mutex;
-    std::vector<Packet> packet_buffer;
+  pcap_t *handle{nullptr};
+  std::string interface;
+  std::string filter_expr;
+  std::atomic<bool> running{false};
+  std::thread capture_thread;
+  std::mutex packet_mutex;
+  std::vector<Packet> packet_buffer;
 
-    static void packet_handler(u_char *user_data,
-                               const struct pcap_pkthdr *pkthdr,
-                               const u_char *packet);
+  static void packet_handler(u_char *user_data,
+                             const struct pcap_pkthdr *pkthdr,
+                             const u_char *packet);
 
-    void capture_thread_func();
+  void capture_thread_func();
 
 public:
-    CaptureModule(const std::string &iface, const std::string &filter);
+  CaptureModule(const std::string &iface, const std::string &filter);
 
-    ~CaptureModule();
+  ~CaptureModule();
 
-    bool initialize();
+  bool initialize();
 
-    void start();
+  void start();
 
-    void stop();
+  void stop();
 
-    std::vector<Packet> get_packets();
+  std::vector<Packet> get_packets();
 };
 
 #endif // CAPTURE_MODULE_H
