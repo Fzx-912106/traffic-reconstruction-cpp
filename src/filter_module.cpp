@@ -644,9 +644,10 @@ FilterModule::detect_by_magic_numbers(const std::vector<std::byte> &data) {
         }
       }
     }
+  }
     return "application/octet-stream"; // 默认未知类型
   }
-}
+
 
 std::string
 FilterModule::determine_file_extension(const std::string &content_type,
