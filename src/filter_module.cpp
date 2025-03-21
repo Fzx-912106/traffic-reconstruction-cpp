@@ -21,9 +21,9 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
       continue;
     }
     // 调试
-    std::cout << "处理数据包：源IP=" << packet.source_ip << ":"
-              << packet.source_port << ",目标IP=" << packet.dest_ip << ":"
-              << packet.dest_port << std::endl;
+    // std::cout << "处理数据包：源IP=" << packet.source_ip << ":"
+    //           << packet.source_port << ",目标IP=" << packet.dest_ip << ":"
+    //           << packet.dest_port << std::endl;
     // 提取IP和TCP头
     const auto *ethernetStart = packet.data.data();
     const struct ip *ip_header = reinterpret_cast<const struct ip *>(
@@ -95,41 +95,9 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
       }
     }
 
-    if (stream_start.find("HTTP/") == 0 ||
-        (stream_start.find("HTTP/") != std::string::npos &&
-         stream_start.find("GET ") != 0 && stream_start.find("POST ") != 0 &&
-         stream_start.find("HEAD ") != 0 && stream_start.find("PUT ") != 0 &&
-         stream_start.find("DELETE ") != 0)) {
-
-      // 添加额外检查，确保这确实是HTTP响应而不是请求
-      bool is_response = true;
-
-      // 如果HTTP/不在开头，进行更严格的检查
-      if (stream_start.find("HTTP/") != 0) {
-        // 检查是否包含常见的HTTP方法，这可能表明它是请求而不是响应
-        for (const auto &method : {"GET ", "POST ", "HEAD ", "PUT ", "DELETE ",
-                                   "OPTIONS ", "TRACE ", "CONNECT "}) {
-          if (stream_start.find(method) == 0) {
-            is_response = false;
-            std::cout << "流看起来像HTTP请求而不是响应，跳过" << std::endl;
-            break;
-          }
-        }
-        // 检查HTTP/的位置是否合理
-        size_t http_pos = stream_start.find("HTTP/");
-        if (http_pos != std::string::npos) {
-          // 检查HTTP/前面是否有状态行的其他部分
-          std::string before_http = stream_start.substr(0, http_pos);
-          if (before_http.find("\r\n") == std::string::npos &&
-              before_http.find("\n") == std::string::npos) {
-            // 如果HTTP/前面没有换行符，这可能不是响应的开始
-            is_response = false;
-            std::cout << "HTTP/标记可能不是响应状态行的一部分，跳过"
-                      << std::endl;
-          }
-        }
-      }
-      if (is_response) {
+    if(stream_start.find("HTTP/") == 0 ||
+         stream_start.find("HTTP/") != std::string::npos) {
+        
         std::cout << "发现HTTP响应，前100字节: " << stream_start << std::endl;
 
         // 尝试找到对应的请求URL
@@ -208,7 +176,7 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
           // 如果响应体为空，可能是头部不完整，保留流
           std::cout << "响应体为空，保留流以等待更多数据" << std::endl;
         }
-      }
+
     }
   }
 
@@ -521,6 +489,8 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
     std::cout << "提取到正文，大小: " << response.body.size() << " 字节"
               << std::endl;
   }
+  else
+    std::cout << "无法提取正文，body_start >= data.size()" << std::endl;
   // 处理分块传输编码
   if (response.headers.find("transfer-encoding") != response.headers.end() &&
       response.headers["transfer-encoding"].find("chunked") !=
@@ -533,10 +503,6 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
     } catch (const std::exception &e) {
       std::cerr << "分块解码失败: " << e.what() << std::endl;
     }
-  } else {
-    std::cout << "无法提取正文，body_start >= data.size()" << std::endl;
-    // 确保不会在后续代码中使用未被初始化的body
-    response.body.clear();
   }
 
   // 获取文件扩展名
