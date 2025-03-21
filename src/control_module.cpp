@@ -78,6 +78,13 @@ void ControlModule::stop() {
       save_module->save_response(response);
     }
   }
+  
+  // 添加：强制处理所有剩余的TCP流
+  std::cout << "尝试处理所有剩余的TCP流..." << std::endl;
+  auto remaining_responses = filter_module->process_remaining_streams();
+  for (const auto &response : remaining_responses) {
+    save_module->save_response(response);
+  }
 }
 
 void ControlModule::status() const {

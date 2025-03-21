@@ -8,6 +8,7 @@
 class FilterModule {
 private:
     std::map<std::string, std::vector<std::byte> > tcp_streams;
+    std::map<std::string, std::string> url_paths;  // 添加URL路径映射
     std::regex http_response_regex{R"(HTTP/\d\.\d\s+(\d+).*?)"};
 
 public:
@@ -23,6 +24,8 @@ public:
                                          const std::string &url);
 
     std::string detect_by_magic_numbers(const std::vector<std::byte> &data);
+        // 处理所有剩余的TCP流
+    std::vector<HttpResponse> process_remaining_streams();
 };
 
 #endif // FILTER_MODULE_H
