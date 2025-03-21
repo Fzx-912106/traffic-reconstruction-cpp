@@ -13,8 +13,6 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
   std::vector<HttpResponse> http_responses;
   // 处理每个数据包并更新TCP流
   for (const auto &packet : packets) {
-    // 仅处理HTTP/HTTPS端口上的数据包
-    // 在第17-21行附近
     // 仅处理HTTP/HTTPS端口上的数据包，但也允许其他常见端口
     if ((packet.source_port != HTTP_PORT && packet.source_port != HTTPS_PORT &&
     packet.dest_port != HTTP_PORT && packet.dest_port != HTTPS_PORT) &&
@@ -99,10 +97,43 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
       }
     }
     
-    if (stream_start.find("HTTP/") == 0 || stream_start.find("HTTP/") != std::string::npos) {
-      // 这看起来像一个HTTP响应
-      std::cout << "发现HTTP响应，前100字节: " << stream_start << std::endl;
+    if (stream_start.find("HTTP/") == 0 || 
+    (stream_start.find("HTTP/") != 
+    std::string::npos && 
+      stream_start.find("GET ") != 0 &&
+      stream_start.find("POST ") != 0 &&
+      stream_start.find("HEAD ") != 0 &&
+      stream_start.find("PUT ") != 0 &&
+      stream_start.find("DELETE ") != 0 )) {
       
+    //添加额外检查，确保这确实是HTTP响应而不是请求
+    bool is_response = true;
+
+    //如果HTTP/不在开头，进行更严格的检查
+      if (stream_start.find("HTTP/") != 0) {
+    // 检查是否包含常见的HTTP方法，这可能表明它是请求而不是响应
+    for (const auto& method : {"GET ", "POST ", "HEAD ", "PUT ", "DELETE ", "OPTIONS ", "TRACE ", "CONNECT "}) {
+      if (stream_start.find(method) == 0) {
+        is_response = false;
+        std::cout << "流看起来像HTTP请求而不是响应，跳过" << std::endl;
+        break;
+      }
+    }
+    // 检查HTTP/的位置是否合理
+    size_t http_pos = stream_start.find("HTTP/");
+    if (http_pos != std::string::npos) {
+      // 检查HTTP/前面是否有状态行的其他部分
+      std::string before_http = stream_start.substr(0, http_pos);
+      if (before_http.find("\r\n") == std::string::npos && before_http.find("\n") == std::string::npos) {
+        // 如果HTTP/前面没有换行符，这可能不是响应的开始
+        is_response = false;
+        std::cout << "HTTP/标记可能不是响应状态行的一部分，跳过" << std::endl;
+      }
+    }
+  }
+      if(is_response) {
+      std::cout << "发现HTTP响应，前100字节: " << stream_start << std::endl;
+
       // 尝试找到对应的请求URL
       std::string response_key = packet.dest_ip + ":" + 
                                std::to_string(packet.dest_port) + "->" +
@@ -138,23 +169,18 @@ if (!response.body.empty()) {
   
   // 检查Content-Length头
   if (response.headers.find("content-length") != response.headers.end()) {
-    size_t expected_length = std::stoul(response.headers["content-length"]);
-    if (response.body.size() < expected_length) {
-      std::cout << "响应体不完整: 当前大小 " << response.body.size() 
-                << " 字节, 预期大小 " << expected_length << " 字节" << std::endl;
-      is_complete = false;
-    }
-  }
-  
-  // 检查是否为分块传输
-  if (response.headers.find("transfer-encoding") != response.headers.end() && 
-      response.headers["transfer-encoding"].find("chunked") != std::string::npos) {
-    // 检查最后一个块是否为0大小的块
-    std::string body_str(reinterpret_cast<const char*>(response.body.data()), response.body.size());
-    if (body_str.find("\r\n0\r\n\r\n") == std::string::npos) {
-      std::cout << "分块传输响应不完整: 未找到结束块" << std::endl;
-      is_complete = false;
-    }
+          try {
+        size_t expected_length = std::stoul(response.headers["content-length"]);
+        if (response.body.size() < expected_length) {
+          std::cout << "响应体不完整: 当前大小 " << response.body.size() 
+                    << " 字节, 预期大小 " << expected_length << " 字节" << std::endl;
+          is_complete = false;
+        } else {
+          std::cout << "响应体完整: 大小符合Content-Length要求" << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "解析Content-Length失败: " << e.what() << std::endl;
+      }
   }
   
   // 如果是HTML内容，检查是否有结束标签
@@ -177,6 +203,7 @@ if (!response.body.empty()) {
 } else {
   // 如果响应体为空，可能是头部不完整，保留流
   std::cout << "响应体为空，保留流以等待更多数据" << std::endl;
+}
 }
     }
   }
@@ -231,6 +258,72 @@ std::vector<HttpResponse> FilterModule::process_remaining_streams() {
   return http_responses;
 }
 
+//实现分块传输解码函数
+std::vector<std::byte> 
+FilterModule::decode_chunked_body(const std::vector<std::byte> &chunked_body) {
+  std::vector<std::byte> decoded_body;
+  
+  // 将字节向量转换为字符串以便于处理
+  std::string body_str;
+  body_str.reserve(chunked_body.size());
+  for (const auto &b : chunked_body) {
+    body_str.push_back(static_cast<char>(std::to_integer<unsigned char>(b)));
+  }
+  
+  size_t pos = 0;
+  while (pos < body_str.size()) {
+    // 查找块大小行的结束位置
+    size_t line_end = body_str.find("\r\n", pos);
+    if (line_end == std::string::npos) {
+      std::cerr << "分块解码错误: 找不到块大小行结束" << std::endl;
+      break;
+    }
+    
+    // 提取块大小（十六进制）
+    std::string chunk_size_hex = body_str.substr(pos, line_end - pos);
+    // 移除可能的块扩展
+    size_t semicolon_pos = chunk_size_hex.find(';');
+    if (semicolon_pos != std::string::npos) {
+      chunk_size_hex = chunk_size_hex.substr(0, semicolon_pos);
+    }
+    
+    // 转换十六进制大小为整数
+    size_t chunk_size = 0;
+    try {
+      chunk_size = std::stoul(chunk_size_hex, nullptr, 16);
+    } catch (const std::exception &e) {
+      std::cerr << "分块解码错误: 无法解析块大小 '" << chunk_size_hex << "': " << e.what() << std::endl;
+      break;
+    }
+    
+    // 如果块大小为0，表示结束
+    if (chunk_size == 0) {
+      std::cout << "分块解码: 找到结束块" << std::endl;
+      break;
+    }
+    
+    // 计算块数据的开始和结束位置
+    size_t chunk_start = line_end + 2; // 跳过CRLF
+    size_t chunk_end = chunk_start + chunk_size;
+    
+    // 检查是否超出范围
+    if (chunk_end + 2 > body_str.size()) { // +2 是为了包含块后的CRLF
+      std::cerr << "分块解码错误: 块数据超出范围" << std::endl;
+      break;
+    }
+    
+    // 复制块数据到解码后的正文
+    for (size_t i = chunk_start; i < chunk_end; ++i) {
+      decoded_body.push_back(std::byte(body_str[i]));
+    }
+    
+    // 移动到下一个块
+    pos = chunk_end + 2; // 跳过块后的CRLF
+  }
+  
+  return decoded_body;
+}
+
 HttpResponse
 FilterModule::parse_http_response(const std::vector<std::byte> &data,
                                   const std::string &url) {
@@ -240,12 +333,49 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
   // 添加调试输出
   std::cout << "解析HTTP响应，数据大小: " << data.size() << " 字节" << std::endl;
 
+  // 检查数据是否足够大，至少包含一个有效的 HTTP 响应头
+  if (data.size() < 16) { // 至少需要 "HTTP/1.x 200 OK\r\n" 这么多字符
+    std::cerr << "数据太小，无法包含有效的HTTP响应" << std::endl;
+    return response;
+  }
+
   // 转换为字符串以便于处理
   std::string data_str;
   data_str.reserve(data.size());
   for (const auto &b : data) {
     data_str.push_back(static_cast<char>(std::to_integer<unsigned char>(b)));
   }
+
+  // 查找 HTTP 响应的开始位置
+  size_t http_start = 0;
+  if (data_str.substr(0, 5) != "HTTP/") {
+    // 如果不是以 HTTP/ 开头，尝试查找 HTTP/ 的位置
+    http_start = data_str.find("HTTP/");
+    if (http_start == std::string::npos) {
+      std::cerr << "找不到HTTP响应标记" << std::endl;
+      return response;
+    }
+    
+    // 确保 HTTP/ 是一行的开始或者是状态行的一部分
+    size_t line_start = data_str.rfind("\n", http_start);
+    if (line_start != std::string::npos && line_start < http_start) {
+      // 检查这一行是否看起来像状态行
+      std::string potential_status_line = data_str.substr(line_start + 1, http_start - line_start + 10);
+      if (potential_status_line.find(" ") != std::string::npos) {
+        // 可能是状态行的一部分，调整http_start到行首
+        http_start = line_start + 1;
+      } else {
+        // 不像状态行，可能是请求头的一部分
+        std::cerr << "HTTP/标记不是状态行的一部分" << std::endl;
+        return response;
+      }
+    }
+    
+    std::cout << "HTTP响应开始于偏移量: " << http_start << std::endl;
+  }
+
+  // 从 HTTP 响应开始处理
+  std::string http_data = data_str.substr(http_start);
 
   // 查找头部和正文之间的分隔符
   size_t header_end = data_str.find("\r\n\r\n");
@@ -301,10 +431,13 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
   std::string headers_str = data_str.substr(0, header_end);
 
   std::cout << "headers_str: " << headers_str << std::endl;
-  // 解析状态行
-  std::smatch match;
-  if (std::regex_search(headers_str, match, http_response_regex)) {
-    response.status_code = std::stoi(match[1]);
+  // 在第一种方法未能解析状态码时使用正则表达式
+  if (response.status_code == 0) {
+    std::smatch match;
+    if (std::regex_search(headers_str, match, http_response_regex)) {
+      response.status_code = std::stoi(match[1]);
+      std::cout << "通过正则表达式解析到状态码: " << response.status_code << std::endl;
+    }
   }
 
   // 解析头部
@@ -332,7 +465,8 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
       std::string value = line.substr(colon_pos + 1);
 
       // 修剪值前面的空白
-      value.erase(0, value.find_first_not_of(" \t"));
+      value.erase(0, value.find_first_not_of(" \t")); //去除前导空格
+      value.erase(value.find_last_not_of(" \t") + 1); //去除尾随空格
 
       response.headers[name] = value;
 
@@ -360,8 +494,6 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
       }
     }
   }
-
-  // 在第260行附近，修改正文提取逻辑
   // 提取正文
   size_t body_start = header_end;
   if (data_str.substr(header_end - 4, 4) == "\r\n\r\n") {
@@ -375,21 +507,27 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
   if (body_start < data.size()) {
     response.body.assign(data.begin() + body_start, data.end());
     std::cout << "提取到正文，大小: " << response.body.size() << " 字节" << std::endl;
-  } else {
+  }
+  // 处理分块传输编码
+    if (response.headers.find("transfer-encoding") != response.headers.end() && 
+        response.headers["transfer-encoding"].find("chunked") != std::string::npos) {
+      std::cout << "检测到分块传输编码，尝试解码..." << std::endl;
+      try {
+        response.body = decode_chunked_body(response.body);
+        std::cout << "分块解码后的正文大小: " << response.body.size() << " 字节" << std::endl;
+      } catch (const std::exception &e) {
+        std::cerr << "分块解码失败: " << e.what() << std::endl;
+      }
+    }
+  else {
     std::cout << "无法提取正文，body_start >= data.size()" << std::endl;
+    //确保不会在后续代码中使用未被初始化的body
+    response.body.clear();
   }
 
-  // 生成文件名
-  // std::string extension = determine_file_extension(response.content_type,
-  //                                                  response.body, response.url);
-  // response.filename =
-  //     "response_" +
-  //     std::to_string(
-  //         std::chrono::system_clock::now().time_since_epoch().count()) +
-  //     extension;
-
-  // 根据内容类型和URL生成文件名
-
+  // 获取文件扩展名
+  // 只有当我们有有效的内容类型和状态码时才生成文件名
+  if (!response.content_type.empty() && response.status_code > 0) {
   std::string extension = determine_file_extension(response.content_type, response.body, url);
   
   // 生成唯一文件名
@@ -399,7 +537,7 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
   
   // 确保文件名有正确的扩展名
   if (response.content_type.find("text/html") == 0) {
-    response.filename = "response_" + std::to_string(timestamp) + ".html";
+    response.filename = "response_" + std::to_string(timestamp) + extension;
   } else if (response.content_type.find("image/") == 0) {
     response.filename = "image_" + std::to_string(timestamp) + extension;
   } else if (response.content_type.find("video/") == 0) {
@@ -411,7 +549,9 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
   }
   
   std::cout << "设置响应文件名: " << response.filename << std::endl;
-
+}else{
+  std::cout << "跳过文件名生成，无效的响应" << std::endl;
+}
   return response;
 }
 
