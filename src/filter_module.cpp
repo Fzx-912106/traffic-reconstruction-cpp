@@ -50,7 +50,7 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
       stream_key = packet.source_ip + ":" + std::to_string(packet.source_port) +
                    "->" + packet.dest_ip + ":" +
                    std::to_string(packet.dest_port);
-    } else {
+    } else { 
       stream_key = packet.dest_ip + ":" + std::to_string(packet.dest_port) +
                    "->" + packet.source_ip + ":" +
                    std::to_string(packet.source_port);
@@ -95,8 +95,8 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
       }
     }
 
-    if(stream_start.find("HTTP/") == 0 ||
-     stream_start.find("HTTP/") != std::string::npos)  {
+    if (stream_start.starts_with("HTTP/") != std::string::npos) {
+
         
         std::cout << "发现HTTP响应，前100字节: " << stream_start << std::endl;
 
@@ -153,6 +153,19 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
             }
           }
 
+          // 处理分块传输编码
+  if (response.headers.find("transfer-encoding") != response.headers.end() &&
+      response.headers["transfer-encoding"].find("chunked") !=
+          std::string::npos) {
+    std::cout << "检测到分块传输编码，尝试解码..." << std::endl;
+    try {
+      response.body = decode_chunked_body(response.body);
+      std::cout << "分块解码后的正文大小: " << response.body.size() << " 字节"
+                << std::endl;
+    } catch (const std::exception &e) {
+      std::cerr << "分块解码失败: " << e.what() << std::endl;
+    }
+  }
 
 // 如果是HTML内容，检查是否有结束标签
 if (response.content_type.find("text/html") == 0) {
@@ -200,14 +213,13 @@ if (response.content_type.find("text/html") == 0) {
           // 如果响应体为空，可能是头部不完整，保留流
           std::cout << "响应体为空，保留流以等待更多数据" << std::endl;
         }
-
+      
     }
   }
 
   return http_responses;
 }
 
-// 添加新方法实现
 std::vector<HttpResponse> FilterModule::process_remaining_streams() {
   std::vector<HttpResponse> http_responses;
 
@@ -515,19 +527,6 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
   }
   else
     std::cout << "无法提取正文，body_start >= data.size()" << std::endl;
-  // 处理分块传输编码
-  if (response.headers.find("transfer-encoding") != response.headers.end() &&
-      response.headers["transfer-encoding"].find("chunked") !=
-          std::string::npos) {
-    std::cout << "检测到分块传输编码，尝试解码..." << std::endl;
-    try {
-      response.body = decode_chunked_body(response.body);
-      std::cout << "分块解码后的正文大小: " << response.body.size() << " 字节"
-                << std::endl;
-    } catch (const std::exception &e) {
-      std::cerr << "分块解码失败: " << e.what() << std::endl;
-    }
-  }
 
   // 获取文件扩展名
   // 只有当我们有有效的内容类型和状态码时才生成文件名
@@ -555,9 +554,10 @@ FilterModule::parse_http_response(const std::vector<std::byte> &data,
     }
 
     std::cout << "设置响应文件名: " << response.filename << std::endl;
-  } else {
-    std::cout << "跳过文件名生成，无效的响应" << std::endl;
   }
+  // else {
+  //   std::cout << "跳过文件名生成，无效的响应" << std::endl;
+  // }
   return response;
 }
 
