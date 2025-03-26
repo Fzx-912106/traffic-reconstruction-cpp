@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PCAP REQUIRED libpcap)
+find_package(fmt CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 include_directories(include)
 
@@ -15,4 +17,4 @@ add_executable(traffic_test
         src/filter_module.cpp
         src/save_module.cpp)
 
-target_link_libraries(traffic_test PRIVATE ${PCAP_LIBRARIES})
+target_link_libraries(traffic_test PRIVATE ${PCAP_LIBRARIES} fmt::fmt spdlog::spdlog)

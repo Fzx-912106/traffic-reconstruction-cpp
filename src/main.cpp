@@ -4,13 +4,13 @@
 
 #include "../include/control_module.h"
 
+#include "spdlog/spdlog.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <thread>
-
 // // 前向声明
 // class ControlModule;
 // class CaptureModule;
@@ -19,8 +19,8 @@
 
 // =========== 主函数 ===========
 int main(int argc, char *argv[]) {
-  std::string interface = "enp1s0";                        // 默认接口
-  std::string output_dir = "./http_output";                // 默认输出目录
+  std::string interface = "enp1s0";               // 默认接口
+  std::string output_dir = "./http_output";       // 默认输出目录
   std::string filter_expr = "host 8.134.152.181"; // 默认过滤器
 
   // 解析命令行参数
@@ -47,8 +47,7 @@ int main(int argc, char *argv[]) {
   try {
     ControlModule control(interface, output_dir, filter_expr);
     control.initialize();
-
-    std::cout << "流量分析还原程序" << std::endl;
+    spdlog::info("初始化完成");
     std::cout << "==================" << std::endl;
     control.status();
     std::cout << "按回车键开始抓包..." << std::endl;

@@ -73,7 +73,7 @@ void CaptureModule::packet_handler(u_char *user_data,
   pkt.dest_ip = inet_ntoa(ip_header->ip_dst);
   pkt.source_port = ntohs(tcp_header->th_sport);
   pkt.dest_port = ntohs(tcp_header->th_dport);
-  pkt.seq_num = ntohl(tcp_header->th_seq);  //新增：TCP序列号
+  pkt.seq_num = ntohl(tcp_header->th_seq);  //新增：TCP序列号「方案选单」
   pkt.ack_num = ntohl(tcp_header->th_ack);  //新增：TCP确认号
 
   // 复制数据包数据
