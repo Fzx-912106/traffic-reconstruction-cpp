@@ -38,27 +38,29 @@ void ControlModule::start() {
   std::cout << "流量分析在接口 " << interface << " 上开始运行" << std::endl;
 
   // 循环处理数据包
-  while (running) {
-    // 从抓包模块获取数据包
-    auto packets = capture_module->get_packets();
-    if (!packets.empty()) {
-      std::cout << "正在处理 " << packets.size() << " 个数据包" << std::endl;
+  this->run_handle = std::thread([this]() {
+    while (running) {
+      // 从抓包模块获取数据包
+      auto packets = capture_module->get_packets();
+      if (!packets.empty()) {
+        std::cout << "正在处理 " << packets.size() << " 个数据包" << std::endl;
 
-      // 过滤HTTP响应
-      auto http_responses = filter_module->filter_http(packets);
-      std::cout << "发现 " << http_responses.size() << " 个HTTP响应"
-                << std::endl;
+        // 过滤HTTP响应
+        auto http_responses = filter_module->filter_http(packets);
+        std::cout << "发现 " << http_responses.size() << " 个HTTP响应"
+                  << std::endl;
 
-      // 保存HTTP响应
-      for (const auto &response : http_responses) {
-        if (save_module->save_response(response)) {
-          std::cout << "已保存: " << response.filename << std::endl;
+        // 保存HTTP响应
+        for (const auto &response : http_responses) {
+          if (save_module->save_response(response)) {
+            std::cout << "已保存: " << response.filename << std::endl;
+          }
         }
       }
-    }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+  });
 }
 
 void ControlModule::stop() {

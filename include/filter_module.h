@@ -16,6 +16,9 @@ public:
 
   std::vector<HttpResponse> filter_http(const std::vector<Packet> &packets);
 
+  void handle_packet(const Packet &packet,
+                     std::vector<HttpResponse> &http_responses, int &retFlag);
+
   HttpResponse parse_http_response(const std::vector<std::byte> &data,
                                    const std::string &url);
   // 解码分块传输编码的函数

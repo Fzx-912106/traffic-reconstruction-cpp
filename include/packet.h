@@ -22,6 +22,8 @@ struct Packet {
   std::string url_path; // 新增：URL路径
   uint16_t source_port;
   uint16_t dest_port;
+  uint32_t seq_num ;    // 新增：TCP序列号
+  uint32_t ack_num ;    // 新增：TCP确认号
 };
 
 struct HttpResponse {

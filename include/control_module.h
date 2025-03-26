@@ -22,6 +22,7 @@ private:
   std::string interface;
   std::string output_dir;
   std::string filter_expr;
+  std::thread run_handle;
 
 public:
   ControlModule(const std::string &iface, const std::string &output,

@@ -13,17 +13,11 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
   std::vector<HttpResponse> http_responses;
   // 处理每个数据包并更新TCP流
   for (const auto &packet : packets) {
-    // 仅处理HTTP/HTTPS端口上的数据包，但也允许其他常见端口
-    if ((packet.source_port != HTTP_PORT && packet.source_port != HTTPS_PORT &&
-         packet.dest_port != HTTP_PORT && packet.dest_port != HTTPS_PORT) &&
-        (packet.source_port > 1024 || packet.dest_port > 1024)) {
-      // 如果既不是标准HTTP/HTTPS端口，也不是高端口（可能是临时分配的），则跳过
-      continue;
-    }
     // 调试
-    // std::cout << "处理数据包：源IP=" << packet.source_ip << ":"
-    //           << packet.source_port << ",目标IP=" << packet.dest_ip << ":"
-    //           << packet.dest_port << std::endl;
+    std::cout << "处理数据包：源IP=" << packet.source_ip << ":"
+              << packet.source_port << ",目标IP=" << packet.dest_ip << ":"
+              << packet.dest_port << ", tcp确认号：" << packet.ack_num
+              << ", tcp序列号：" << packet.seq_num << std::endl;
     // 提取IP和TCP头
     const auto *ethernetStart = packet.data.data();
     const struct ip *ip_header = reinterpret_cast<const struct ip *>(
@@ -46,7 +40,7 @@ FilterModule::filter_http(const std::vector<Packet> &packets) {
 
     // 创建流密钥（源IP:端口 -> 目标IP:端口）
     std::string stream_key;
-    if (packet.source_port < packet.dest_port) {
+    if (packet.source_port < packet.dest_port ) {
       stream_key = packet.source_ip + ":" + std::to_string(packet.source_port) +
                    "->" + packet.dest_ip + ":" +
                    std::to_string(packet.dest_port);

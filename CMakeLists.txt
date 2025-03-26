@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PCAP REQUIRED libpcap)
 
+include_directories(include)
+
 add_executable(traffic_test
         src/main.cpp
         src/capture_module.cpp
