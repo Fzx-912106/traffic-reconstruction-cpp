@@ -14,7 +14,7 @@ constexpr int MAX_PACKET_SIZE = 65535;
 
 // =========== 数据包结构 ===========
 struct Packet {
-  std::vector<std::byte> data;
+
   size_t length;
   std::chrono::system_clock::time_point timestamp;
   std::string source_ip;
@@ -22,8 +22,9 @@ struct Packet {
   std::string url_path; // 新增：URL路径
   uint16_t source_port;
   uint16_t dest_port;
-  uint32_t seq_num ;    // 新增：TCP序列号
-  uint32_t ack_num ;    // 新增：TCP确认号
+  uint32_t seq_num; // 新增：TCP序列号
+  uint32_t ack_num; // 新增：TCP确认号
+  std::vector<std::byte> data;
 };
 
 struct HttpResponse {

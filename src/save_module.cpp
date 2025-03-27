@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace fs = std::filesystem;
 
@@ -14,7 +15,7 @@ bool SaveModule::initialize() {
     ensure_directory_exists(output_dir);
     return true;
   } catch (const std::exception &e) {
-    std::cerr << "保存模块初始化错误: " << e.what() << std::endl;
+    spdlog::error("保存模块初始化失败: {}", e.what());
     return false;
   }
 }
@@ -62,7 +63,7 @@ bool SaveModule::save_response(const HttpResponse &response) {
     // 保存文件
     std::ofstream file(filepath, std::ios::binary);
     if (!file) {
-      std::cerr << "打开文件写入错误: " << filepath << std::endl;
+      spdlog::error("打开文件写入错误: {}", filepath);
       return false;
     }
 
@@ -72,13 +73,13 @@ bool SaveModule::save_response(const HttpResponse &response) {
     }
 
     if (!file) {
-      std::cerr << "写入文件错误: " << filepath << std::endl;
+      spdlog::error("写入文件错误: {}", filepath);
       return false;
     }
 
     return true;
   } catch (const std::exception &e) {
-    std::cerr << "保存响应错误: " << e.what() << std::endl;
+    spdlog::error("保存响应错误：{}",e.what());
     return false;
   }
 }

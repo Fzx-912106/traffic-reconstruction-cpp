@@ -7,6 +7,8 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(PCAP REQUIRED libpcap)
 find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
+find_package(GTest CONFIG REQUIRED)
+find_package(libtins CONFIG REQUIRED)
 
 include_directories(include)
 
@@ -17,4 +19,9 @@ add_executable(traffic_test
         src/filter_module.cpp
         src/save_module.cpp)
 
-target_link_libraries(traffic_test PRIVATE ${PCAP_LIBRARIES} fmt::fmt spdlog::spdlog)
+target_link_libraries(traffic_test PRIVATE ${PCAP_LIBRARIES} fmt::fmt spdlog::spdlog tins)
+
+add_executable(tests
+        tests/test_packet.cc)
+target_link_libraries(tests PRIVATE GTest::gtest GTest::gtest_main  fmt::fmt spdlog::spdlog)
+add_test(NAME tests COMMAND tests)
