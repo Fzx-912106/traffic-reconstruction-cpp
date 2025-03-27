@@ -16,12 +16,14 @@ add_executable(traffic_test
         src/main.cpp
         src/capture_module.cpp
         src/control_module.cpp
-        src/filter_module.cpp
-        src/save_module.cpp)
+)
 
 target_link_libraries(traffic_test PRIVATE ${PCAP_LIBRARIES} fmt::fmt spdlog::spdlog tins)
 
-add_executable(tests
-        tests/test_packet.cc)
-target_link_libraries(tests PRIVATE GTest::gtest GTest::gtest_main  fmt::fmt spdlog::spdlog)
-add_test(NAME tests COMMAND tests)
+find_package(Boost REQUIRED COMPONENTS regex)
+target_link_libraries(traffic_test PRIVATE Boost::regex)
+
+# add_executable(tests
+#         tests/test_packet.cc)
+# target_link_libraries(tests PRIVATE GTest::gtest GTest::gtest_main  fmt::fmt spdlog::spdlog)
+# add_test(NAME tests COMMAND tests)

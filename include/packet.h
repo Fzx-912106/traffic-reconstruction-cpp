@@ -2,10 +2,10 @@
 #define PACKET_H
 
 #include <chrono>
-#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
+#include "tins/tins.h"
 
 // =========== 常量 ===========
 constexpr int HTTP_PORT = 80;
@@ -14,17 +14,8 @@ constexpr int MAX_PACKET_SIZE = 65535;
 
 // =========== 数据包结构 ===========
 struct Packet {
-
-  size_t length;
-  std::chrono::system_clock::time_point timestamp;
-  std::string source_ip;
-  std::string dest_ip;
-  std::string url_path; // 新增：URL路径
-  uint16_t source_port;
-  uint16_t dest_port;
-  uint32_t seq_num; // 新增：TCP序列号
-  uint32_t ack_num; // 新增：TCP确认号
-  std::vector<std::byte> data;
+  Tins::PDU& pdu;
+  std::chrono::time_point<std::chrono::steady_clock> time;
 };
 
 struct HttpResponse {

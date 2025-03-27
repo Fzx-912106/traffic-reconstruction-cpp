@@ -3,6 +3,7 @@
     "fmt",
     "spdlog",
     "gtest",
-    "libtins"
+    "libtins",
+    "boost-regex"
   ]
 }

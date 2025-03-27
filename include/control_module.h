@@ -2,9 +2,6 @@
 #define CONTROL_MODULE_H
 
 #include "capture_module.h"
-#include "filter_module.h"
-#include "packet.h"
-#include "save_module.h"
 
 #include <atomic>
 #include <memory>
@@ -16,8 +13,8 @@
 class ControlModule {
 private:
   std::shared_ptr<CaptureModule> capture_module;
-  std::shared_ptr<FilterModule> filter_module;
-  std::shared_ptr<SaveModule> save_module;
+  // std::shared_ptr<FilterModule> filter_module;
+  // std::shared_ptr<SaveModule> save_module;
   std::atomic<bool> running{false};
   std::string interface;
   std::string output_dir;
@@ -34,7 +31,7 @@ public:
 
   void stop();
 
-  void status() const;
+  bool status() const;
 };
 
 #endif // CONTROL_MODULE_H

@@ -13,7 +13,7 @@
 int main(int argc, char *argv[]) {
   std::string interface = "enp1s0";               // 默认接口
   std::string output_dir = "./http_output";       // 默认输出目录
-  std::string filter_expr = "host 8.134.152.181"; // 默认过滤器
+  std::string filter_expr = "tcp port 80"; // 默认过滤器
 
   // 解析命令行参数
   for (int i = 1; i < argc; i++) {
